@@ -28,9 +28,36 @@
    script como front-end de demonstração, não como o cofre do jogo.
    ========================================================= */
 
+// ===================== DIAGNÓSTICO: erro global visível =====================
+// Se qualquer erro no topo do script travar tudo (o que faz o formulário de
+// login cair no submit padrão do navegador e "só recarregar a página"), isso
+// aqui mostra um aviso vermelho fixo no topo, já que no celular não dá pra
+// abrir o console fácil. Remova depois que o login estiver 100% ok.
+window.addEventListener("error", (ev) => {
+  console.error("Erro capturado pelo script.js:", ev.error || ev.message, ev);
+  const banner = document.createElement("div");
+  banner.style.cssText =
+    "position:fixed;top:0;left:0;right:0;background:#c0392b;color:#fff;padding:10px 14px;" +
+    "text-align:center;z-index:99999;font-family:sans-serif;font-size:13px;line-height:1.4;";
+  banner.textContent = "⚠️ Erro no script.js: " + (ev.message || "veja detalhes no console") +
+    (ev.filename ? ` (${ev.filename.split("/").pop()}:${ev.lineno})` : "");
+  document.body.prepend(banner);
+});
+
 // ===================== CONFIGURAÇÃO SUPABASE =====================
 const SUPABASE_URL = "https://hyaaehjpbuqavkosthbv.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh5YWFlaGpwYnVxYXZrb3N0aGJ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0NTA1NjAsImV4cCI6MjEwMTAyNjU2MH0.69Dl4aNyMYMrvmu5PdwTnbVkNlH2rIar8ERiWiMf7uk";
+
+if (!window.supabase || typeof window.supabase.createClient !== "function") {
+  const banner = document.createElement("div");
+  banner.style.cssText =
+    "position:fixed;top:0;left:0;right:0;background:#c0392b;color:#fff;padding:10px 14px;" +
+    "text-align:center;z-index:99999;font-family:sans-serif;font-size:13px;";
+  banner.textContent = "⚠️ A biblioteca do Supabase (CDN) não carregou. Sem internet, CDN bloqueado, ou adblock. O login não vai funcionar.";
+  document.body.prepend(banner);
+  throw new Error("window.supabase indisponível — cdn.jsdelivr.net não carregou o supabase-js.");
+}
+
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ===================== PARÂMETROS DA ECONOMIA =====================
