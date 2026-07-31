@@ -103,9 +103,26 @@ $("#btn-fechar-modal").addEventListener("click", () => ($("#auth-modal").hidden 
 $("#form-login").addEventListener("submit", async (e) => {
   e.preventDefault();
   const email = $("#input-login-email").value.trim();
-  const { error } = await supabase.auth.signInWithOtp({ email });
-  if (error) return toast(`Erro ao enviar link: ${error.message}`, "error");
-  toast("Link enviado! Confira seu e-mail.", "success");
+  const botao = e.target.querySelector('button[type="submit"]');
+
+  botao.disabled = true;
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: window.location.origin },
+  });
+  botao.disabled = false;
+
+  if (error) {
+    // Supabase retorna 429 quando o SMTP padrão (limite de ~2 e-mails/hora)
+    // ou algum rate limit de auth é atingido. Isso NÃO é bug do app —
+    // é preciso configurar um SMTP customizado (Resend/SendGrid/Mailtrap)
+    // em Project Settings > Auth > SMTP Settings para resolver de vez.
+    if (error.status === 429 || /rate limit/i.test(error.message)) {
+      return toast("Muitas tentativas de envio. Aguarde alguns minutos ou configure um SMTP customizado no Supabase.", "error");
+    }
+    return toast(`Erro ao enviar link: ${error.message}`, "error");
+  }
+  toast("Link enviado! Confira seu e-mail (e a caixa de spam).", "success");
   $("#auth-modal").hidden = true;
 });
 
