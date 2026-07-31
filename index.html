@@ -1,207 +1,213 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GLADIUS — Ludus Digital</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ARENA — Jogo de Gladiadores</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Barlow+Condensed:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-<div id="app">
+<!-- ===================== TOPO / LEDGER BAR ===================== -->
+<header class="ledger-bar">
+  <div class="brand">
+    <span class="brand-mark">⚔</span>
+    <h1>ARENA</h1>
+  </div>
 
-  <!-- ===================== TOPBAR ===================== -->
-  <header class="topbar">
-    <div class="brand">
-      <span class="brand-mark">Ⅶ</span>
-      <div class="brand-text">
-        <h1>GLADIUS</h1>
-        <span class="brand-sub">ludus digital</span>
-      </div>
+  <div class="wallet" id="wallet-display">
+    <div class="wallet-item" title="Token (1 token = US$1)">
+      <span class="wallet-label">TOKEN</span>
+      <span class="wallet-value" id="wallet-token">0.00</span>
     </div>
-
-    <nav class="tabs" id="main-tabs">
-      <button class="tab active" data-screen="ludus">Ludus</button>
-      <button class="tab" data-screen="forge">Forja</button>
-      <button class="tab" data-screen="arenas">Arenas</button>
-      <button class="tab" data-screen="cave">Catacumbas</button>
-    </nav>
-
-    <div class="wallet" id="wallet-widget">
-      <div class="wallet-balances">
-        <span class="balance usdt" title="Saldo USDT (mock)">
-          <strong id="usdt-balance">0.00</strong> USDT
-        </span>
-        <span class="balance coins" title="Moedas do Ludus">
-          <strong id="coin-balance">0</strong> <span class="coin-icon">◈</span>
-        </span>
-      </div>
-      <button class="btn btn-wallet" id="btn-connect-wallet">Conectar Carteira</button>
+    <div class="wallet-item" title="Moeda ganha nas cavernas">
+      <span class="wallet-label">MOEDA</span>
+      <span class="wallet-value" id="wallet-moeda">0</span>
     </div>
-  </header>
+  </div>
 
-  <!-- ===================== LUDUS (dashboard) ===================== -->
-  <section class="screen active" id="screen-ludus" data-screen="ludus">
-    <div class="screen-head">
-      <div>
-        <p class="eyebrow">Seu ludus</p>
-        <h2>Gladiadores sob seu comando</h2>
-      </div>
-      <button class="btn btn-primary" data-goto="forge">+ Recrutar gladiador (2 USDT)</button>
-    </div>
+  <div class="auth-area" id="auth-area">
+    <button class="btn btn-ghost" id="btn-login">Entrar</button>
+  </div>
+</header>
 
-    <div class="roster" id="roster-grid">
-      <!-- gladiator cards injected here -->
-    </div>
+<!-- ===================== NAVEGAÇÃO ===================== -->
+<nav class="tabs" id="tabs" aria-label="Navegação principal">
+  <button class="tab-btn is-active" data-tab="gladiador">Meu Gladiador</button>
+  <button class="tab-btn" data-tab="caverna">Cavernas</button>
+  <button class="tab-btn" data-tab="arena">Arena</button>
+  <button class="tab-btn" data-tab="mercado">Mercado</button>
+</nav>
 
-    <p class="empty-state" id="roster-empty">
-      Seu ludus está vazio. Forje seu primeiro gladiador para entrar nas arenas e nas catacumbas.
-    </p>
-  </section>
+<main id="app">
 
-  <!-- ===================== FORJA (criação) ===================== -->
-  <section class="screen" id="screen-forge" data-screen="forge">
-    <div class="screen-head">
-      <div>
-        <p class="eyebrow">Forja &middot; 2 USDT</p>
-        <h2>Talhe um novo gladiador</h2>
-      </div>
-    </div>
+  <!-- ===================== GLADIADOR ===================== -->
+  <section class="tab-panel is-active" id="tab-gladiador" data-panel="gladiador">
+    <div class="panel-grid">
 
-    <div class="forge-layout">
-      <div class="forge-form panel">
-        <label class="field">
-          <span>Nome do gladiador</span>
-          <input type="text" id="input-name" maxlength="18" placeholder="Ex: Maximus da Trácia">
-        </label>
-
-        <div class="stat-budget">
-          <span>Pontos disponíveis</span>
-          <strong id="points-remaining">0</strong>
-          <span class="of-total">/ <span id="points-total">0</span></span>
-        </div>
-
-        <div class="stat-list" id="stat-list">
-          <!-- stat rows injected here -->
-        </div>
-
-        <button class="btn btn-primary btn-block" id="btn-create-gladiator" disabled>
-          Selar contrato &middot; 2 USDT
-        </button>
+      <div class="card" id="card-criar-gladiador">
+        <h2 class="card-title">Forjar gladiador</h2>
+        <p class="card-hint">Altura e peso definem os stats base. Itens equipados dão bônus.</p>
+        <form id="form-gladiador" autocomplete="off">
+          <label class="field">
+            <span>Nome</span>
+            <input type="text" id="input-nome" maxlength="24" placeholder="Ex: Marcus, o Cinza" required />
+          </label>
+          <div class="field-row">
+            <label class="field">
+              <span>Altura (cm)</span>
+              <input type="number" id="input-altura" min="150" max="220" value="180" required />
+            </label>
+            <label class="field">
+              <span>Peso (kg)</span>
+              <input type="number" id="input-peso" min="50" max="150" value="85" required />
+            </label>
+          </div>
+          <button type="submit" class="btn btn-primary">Forjar por 0 moeda (grátis)</button>
+        </form>
       </div>
 
-      <div class="forge-preview panel" id="forge-preview">
-        <p class="eyebrow">Prévia do tablet</p>
-        <div class="tablet">
-          <h3 id="preview-name">Sem nome</h3>
-          <div class="tablet-stats" id="preview-stats"></div>
-          <div class="tablet-derived">
-            <div><span>Vida</span><strong id="preview-hp">—</strong></div>
-            <div><span>Iniciativa</span><strong id="preview-init">—</strong></div>
+      <div class="card" id="card-gladiador-atual" hidden>
+        <h2 class="card-title" id="glad-nome">—</h2>
+        <div class="stat-grid">
+          <div class="stat">
+            <span class="stat-label">Força</span>
+            <span class="stat-value" id="glad-forca">0</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Resistência</span>
+            <span class="stat-value" id="glad-resistencia">0</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Agilidade</span>
+            <span class="stat-value" id="glad-agilidade">0</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Poder total</span>
+            <span class="stat-value stat-value--accent" id="glad-poder">0</span>
           </div>
         </div>
+        <div class="record">
+          <span><strong id="glad-vitorias">0</strong> vitórias</span>
+          <span><strong id="glad-derrotas">0</strong> derrotas</span>
+        </div>
+        <h3 class="card-subtitle">Itens equipados</h3>
+        <ul class="item-list" id="glad-itens-equipados"></ul>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===================== CAVERNA ===================== -->
+  <section class="tab-panel" id="tab-caverna" data-panel="caverna">
+    <div class="panel-grid">
+      <div class="card">
+        <h2 class="card-title">Explorar as cavernas</h2>
+        <p class="card-hint">Modo grátis (PvE). Combate contra monstros — sem outros jogadores. Loot: moeda ou item.</p>
+        <div class="cap-meter">
+          <span>Teto diário de moeda</span>
+          <div class="cap-bar"><div class="cap-bar-fill" id="cap-bar-fill"></div></div>
+          <span class="cap-meter-value" id="cap-meter-value">0 / 0</span>
+        </div>
+        <button class="btn btn-primary" id="btn-explorar">Entrar na caverna</button>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">Registro de expedições</h2>
+        <ul class="log-list" id="log-caverna">
+          <li class="log-empty">Nenhuma expedição ainda.</li>
+        </ul>
       </div>
     </div>
   </section>
 
-  <!-- ===================== ARENAS ===================== -->
-  <section class="screen" id="screen-arenas" data-screen="arenas">
-    <div class="screen-head">
-      <div>
-        <p class="eyebrow">Torneios diários &middot; até 16 lutadores</p>
-        <h2>Arenas abertas</h2>
-      </div>
-      <select id="select-arena-gladiator" class="select"></select>
-    </div>
-
-    <div class="arena-grid" id="arena-grid"></div>
-  </section>
-
-  <!-- ===================== CATACUMBAS (cave) ===================== -->
-  <section class="screen" id="screen-cave" data-screen="cave">
-    <div class="screen-head">
-      <div>
-        <p class="eyebrow">PvE &middot; sem confronto entre jogadores</p>
-        <h2>Catacumbas</h2>
-      </div>
-    </div>
-
-    <div class="cave-layout">
-      <div class="cave-entry panel" id="cave-entry">
-        <label class="field">
-          <span>Escolha o gladiador que descerá</span>
-          <select id="select-cave-gladiator" class="select"></select>
-        </label>
-        <p class="cave-fee-note" id="cave-fee-note">
-          Entrada gratuita disponível hoje.
+  <!-- ===================== ARENA ===================== -->
+  <section class="tab-panel" id="tab-arena" data-panel="arena">
+    <div class="panel-grid">
+      <div class="card">
+        <h2 class="card-title">Fila da arena</h2>
+        <p class="card-hint">
+          Inscrição: <span id="arena-taxa-inscricao">2</span> token · Bracket escala 4 → 8 → 16 conforme jogadores na fila ·
+          5% fica com a casa, resto é redistribuído (1º 50% · 2º 25% · 3º/4º 12,5% cada).
         </p>
-        <button class="btn btn-primary btn-block" id="btn-enter-cave">Entrar nas catacumbas</button>
-        <p class="cave-warning">Se seu gladiador morrer, ele pode perder os itens que estiver usando.</p>
+        <div class="queue-status" id="queue-status">Fila: <strong id="queue-count">0</strong> gladiador(es) aguardando</div>
+        <button class="btn btn-primary" id="btn-entrar-arena">Entrar na arena</button>
       </div>
 
-      <div class="cave-run panel hidden" id="cave-run">
-        <div class="cave-status">
-          <div class="cave-hp">
-            <span id="cave-gladiator-name">—</span>
-            <div class="hp-bar"><div class="hp-fill" id="cave-hp-fill"></div></div>
-            <span class="hp-text"><span id="cave-hp-value">0</span>/<span id="cave-hp-max">0</span></span>
-          </div>
-          <div class="cave-loot-tally">
-            <span>Butim desta descida</span>
-            <strong id="cave-loot-count">0 ◈</strong>
-          </div>
+      <div class="card">
+        <h2 class="card-title">Último torneio</h2>
+        <div id="bracket-container" class="bracket-container">
+          <p class="log-empty">Nenhum torneio disputado ainda.</p>
         </div>
-
-        <div class="cave-log" id="cave-log"></div>
-
-        <div class="cave-actions" id="cave-actions"></div>
       </div>
     </div>
   </section>
 
-</div>
-
-<!-- ===================== COMBAT MODAL ===================== -->
-<div class="modal hidden" id="combat-modal">
-  <div class="modal-backdrop"></div>
-  <div class="combat-stage">
-    <header class="combat-header">
-      <p class="eyebrow" id="combat-title">Combate</p>
-      <button class="btn-close" id="btn-close-combat" aria-label="Fechar">&times;</button>
-    </header>
-
-    <div class="fighters">
-      <div class="fighter fighter-player" id="fighter-a">
-        <div class="fighter-portrait"><span class="portrait-glyph">⚔</span></div>
-        <h4 class="fighter-name" id="fighter-a-name">—</h4>
-        <div class="hp-bar"><div class="hp-fill" id="fighter-a-hp-fill"></div></div>
-        <span class="hp-text"><span id="fighter-a-hp-value">0</span>/<span id="fighter-a-hp-max">0</span></span>
+  <!-- ===================== MERCADO ===================== -->
+  <section class="tab-panel" id="tab-mercado" data-panel="mercado">
+    <div class="panel-grid">
+      <div class="card">
+        <h2 class="card-title">Anunciar item</h2>
+        <form id="form-listar-item" autocomplete="off">
+          <label class="field">
+            <span>Item do inventário</span>
+            <select id="select-item-inventario"></select>
+          </label>
+          <label class="field">
+            <span>Preço (token)</span>
+            <input type="number" id="input-preco-item" min="0.1" step="0.1" required />
+          </label>
+          <p class="card-hint" id="taxa-preview">Taxa mínima do marketplace: —</p>
+          <button type="submit" class="btn btn-primary">Anunciar no mercado</button>
+        </form>
       </div>
 
-      <div class="versus">VS</div>
-
-      <div class="fighter fighter-enemy" id="fighter-b">
-        <div class="fighter-portrait"><span class="portrait-glyph">☠</span></div>
-        <h4 class="fighter-name" id="fighter-b-name">—</h4>
-        <div class="hp-bar"><div class="hp-fill" id="fighter-b-hp-fill"></div></div>
-        <span class="hp-text"><span id="fighter-b-hp-value">0</span>/<span id="fighter-b-hp-max">0</span></span>
+      <div class="card">
+        <h2 class="card-title">Itens à venda</h2>
+        <ul class="item-list item-list--market" id="market-listings">
+          <li class="log-empty">Nenhum item à venda no momento.</li>
+        </ul>
       </div>
     </div>
 
-    <div class="combat-log" id="combat-log"></div>
-
-    <div class="combat-actions" id="combat-actions">
-      <button class="btn btn-action" data-action="attack">Atacar</button>
-      <button class="btn btn-action" data-action="defend">Defender</button>
-      <button class="btn btn-action" data-action="special">Golpe especial</button>
+    <div class="card">
+      <h2 class="card-title">Converter token → moeda</h2>
+      <p class="card-hint">Conversão de mão única. Moeda nunca vira token de volta.</p>
+      <form id="form-converter" class="field-row">
+        <label class="field">
+          <span>Token a converter</span>
+          <input type="number" id="input-converter-token" min="0.1" step="0.1" required />
+        </label>
+        <button type="submit" class="btn btn-secondary">Converter</button>
+      </form>
     </div>
+  </section>
+
+</main>
+
+<!-- ===================== MODAL DE LOGIN ===================== -->
+<div class="modal-backdrop" id="auth-modal" hidden>
+  <div class="modal">
+    <h2 class="card-title">Entrar na arena</h2>
+    <p class="card-hint">Link mágico por e-mail (Supabase Auth).</p>
+    <form id="form-login">
+      <label class="field">
+        <span>E-mail</span>
+        <input type="email" id="input-login-email" required />
+      </label>
+      <button type="submit" class="btn btn-primary">Enviar link de acesso</button>
+    </form>
+    <button class="btn btn-ghost" id="btn-fechar-modal">Fechar</button>
   </div>
 </div>
 
-<div id="toast-container"></div>
+<!-- ===================== TOASTS ===================== -->
+<div id="toast-container" class="toast-container" aria-live="polite"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="script.js"></script>
 </body>
 </html>
