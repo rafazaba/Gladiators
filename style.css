@@ -352,7 +352,7 @@ main { max-width: 1080px; margin: 0 auto; padding: 1.75rem 1.5rem 4rem; }
 .bracket-match .loser { color: var(--bone-dim); text-decoration: line-through; }
 
 /* ===================== MODAL / TOASTS ===================== */
-.modal-backdrop {
+.modal-backdrop:not([hidden]) {
   position: fixed; inset: 0;
   background: rgba(10, 8, 6, 0.75);
   display: flex; align-items: center; justify-content: center;
