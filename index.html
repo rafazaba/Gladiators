@@ -50,13 +50,9 @@
   </div>
 
   <div class="wallet" id="wallet-display">
-    <div class="wallet-item" title="Token (1 token = US$1)">
-      <span class="wallet-label">TOKEN</span>
+    <div class="wallet-item" title="Token (1 token = US$1 / USDT)">
+      <span class="wallet-label">USDT</span>
       <span class="wallet-value" id="wallet-token">0.00</span>
-    </div>
-    <div class="wallet-item" title="Moeda ganha nas cavernas">
-      <span class="wallet-label">MOEDA</span>
-      <span class="wallet-value" id="wallet-moeda">0</span>
     </div>
   </div>
 
@@ -97,7 +93,7 @@
               <input type="number" id="input-peso" min="50" max="150" value="85" required />
             </label>
           </div>
-          <button type="submit" class="btn btn-primary">Forjar por 0 moeda (grátis)</button>
+          <button type="submit" class="btn btn-primary">Forjar gladiador (grátis)</button>
         </form>
       </div>
 
@@ -136,14 +132,16 @@
   <section class="tab-panel" id="tab-caverna" data-panel="caverna">
     <div class="panel-grid">
       <div class="card">
-        <h2 class="card-title">Explorar as cavernas</h2>
-        <p class="card-hint">Modo grátis (PvE). Combate contra monstros — sem outros jogadores. Loot: moeda ou item.</p>
-        <div class="cap-meter">
-          <span>Teto diário de moeda</span>
-          <div class="cap-bar"><div class="cap-bar-fill" id="cap-bar-fill"></div></div>
-          <span class="cap-meter-value" id="cap-meter-value">0 / 0</span>
+        <h2 class="card-title">Descer às cavernas</h2>
+        <p class="card-hint">Modo PvE. A primeira descida é grátis; cada descida seguinte custa 0,5 USDT a mais que a anterior. Dentro da caverna, enfrente quantos monstros ou tesouros quiser — só é possível subir depois de resolver o encontro atual.</p>
+        <div class="cave-status" id="cave-status">
+          <span>Próxima descida: <strong id="cave-preco-descida">grátis</strong></span>
         </div>
-        <button class="btn btn-primary" id="btn-explorar">Entrar na caverna</button>
+        <button class="btn btn-primary" id="btn-descer">Descer à caverna</button>
+        <div class="cave-actions" id="cave-actions" hidden>
+          <button class="btn btn-primary" id="btn-explorar">Enfrentar próximo encontro</button>
+          <button class="btn btn-secondary" id="btn-subir">Subir com o que ganhou</button>
+        </div>
       </div>
 
       <div class="card">
@@ -202,18 +200,6 @@
           <li class="log-empty">Nenhum item à venda no momento.</li>
         </ul>
       </div>
-    </div>
-
-    <div class="card">
-      <h2 class="card-title">Converter token → moeda</h2>
-      <p class="card-hint">Conversão de mão única. Moeda nunca vira token de volta.</p>
-      <form id="form-converter" class="field-row">
-        <label class="field">
-          <span>Token a converter</span>
-          <input type="number" id="input-converter-token" min="0.1" step="0.1" required />
-        </label>
-        <button type="submit" class="btn btn-secondary">Converter</button>
-      </form>
     </div>
   </section>
 

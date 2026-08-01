@@ -37,26 +37,36 @@ if (!window.supabase || typeof window.supabase.createClient !== "function") {
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ===================== PARÂMETROS DA ECONOMIA =====================
-// Espelham o que foi definido na simulação — ajuste aqui se mudar lá.
+// Só existe uma moeda no jogo: token (= USDT). Espelha o que foi definido
+// na simulação — ajuste aqui se mudar lá.
 const ECONOMIA = {
-  taxaInscricaoArena: 2,       // token
-  taxaCasaTorneio: 0.05,       // 5%
+  taxaInscricaoArena: 2,        // token
+  taxaCasaTorneio: 0.05,        // 5%
   bracketGrande: 16,
   bracketMedio: 8,
   bracketPequeno: 4,
-  tetoDiarioMoeda: 30,
-  taxaMinimaMarketplace: 0.03, // sobre o valor de referência do item
-  taxaCambioTokenMoeda: 10,    // moeda por token convertido
+  custoIncrementoDescida: 0.5,  // cada descida seguinte à primeira custa +0,5 token
+  taxaMinimaMarketplace: 0.03,  // sobre o valor de referência do item
 };
 
 const DISTRIBUICAO_PREMIO = { primeiro: 0.5, segundo: 0.25, terceiroQuarto: 0.125 };
 
+// Recompensas em token (antes eram em "moeda", convertidas aqui na razão
+// antiga de 10:1 pra manter o mesmo equilíbrio econômico agora que só existe token).
 const MONSTROS = [
-  { nome: "Cão da Sarna", dificuldade: 12, moedaMin: 4, moedaMax: 9, chanceItem: 0.12 },
-  { nome: "Bandido Ferido", dificuldade: 18, moedaMin: 6, moedaMax: 12, chanceItem: 0.18 },
-  { nome: "Urso das Cavernas", dificuldade: 26, moedaMin: 9, moedaMax: 16, chanceItem: 0.22 },
-  { nome: "Espectro de Ferro", dificuldade: 34, moedaMin: 12, moedaMax: 20, chanceItem: 0.28 },
+  { nome: "Cão da Sarna", dificuldade: 12, tokenMin: 0.4, tokenMax: 0.9, chanceItem: 0.12 },
+  { nome: "Bandido Ferido", dificuldade: 18, tokenMin: 0.6, tokenMax: 1.2, chanceItem: 0.18 },
+  { nome: "Urso das Cavernas", dificuldade: 26, tokenMin: 0.9, tokenMax: 1.6, chanceItem: 0.22 },
+  { nome: "Espectro de Ferro", dificuldade: 34, tokenMin: 1.2, tokenMax: 2.0, chanceItem: 0.28 },
 ];
+
+// Tesouros: sem combate, recompensa garantida (menor que a média de um
+// monstro vencido, já que não tem risco de derrota).
+const TESOUROS = [
+  { nome: "Bolsa de Moedas Antigas", tokenMin: 0.3, tokenMax: 0.6, chanceItem: 0.15 },
+  { nome: "Baú Reforçado", tokenMin: 0.5, tokenMax: 0.9, chanceItem: 0.2 },
+];
+const CHANCE_TESOURO = 0.3; // 30% dos encontros são tesouro, 70% monstro
 
 const ITENS_LOOT = [
   { nome: "Bracelete de Bronze", tipo: "acessório", valor_referencia: 1.2, bonus_forca: 1, bonus_resistencia: 0, bonus_agilidade: 0 },
@@ -69,10 +79,11 @@ const ITENS_LOOT = [
 const state = {
   user: null,
   profileUsername: null,
-  wallet: { token: 0, moeda: 0 },
+  wallet: { token: 0 },
   gladiator: null,
   items: [],
-  todayMoedaEarned: 0,
+  descidasFeitas: 0,   // quantas descidas já pagas nessa sessão — define o preço da próxima
+  emDescida: false,    // true enquanto o gladiador está dentro da caverna, podendo explorar
 };
 
 // ===================== UTIL =====================
@@ -184,14 +195,14 @@ async function carregarPerfilCompleto() {
 async function carregarWallet() {
   const { data, error } = await supabaseClient
     .from("wallets")
-    .select("token, moeda")
+    .select("token")
     .eq("owner_id", state.user.id)
     .maybeSingle();
   if (error) return console.error(error);
   if (!data) {
     // primeira vez — cria carteira zerada
-    await supabaseClient.from("wallets").insert({ owner_id: state.user.id, token: 0, moeda: 0 });
-    state.wallet = { token: 0, moeda: 0 };
+    await supabaseClient.from("wallets").insert({ owner_id: state.user.id, token: 0 });
+    state.wallet = { token: 0 };
   } else {
     state.wallet = data;
   }
@@ -200,17 +211,15 @@ async function carregarWallet() {
 
 function renderWallet() {
   $("#wallet-token").textContent = fmt2(state.wallet.token);
-  $("#wallet-moeda").textContent = Math.floor(state.wallet.moeda ?? 0);
 }
 
-async function ajustarWallet({ token = 0, moeda = 0 }) {
+async function ajustarWallet({ token = 0 }) {
   // 🔒 mover para backend antes de operar com dinheiro real.
   state.wallet.token = Number((state.wallet.token + token).toFixed(4));
-  state.wallet.moeda = Math.max(0, state.wallet.moeda + moeda);
   renderWallet();
   const { error } = await supabaseClient
     .from("wallets")
-    .update({ token: state.wallet.token, moeda: state.wallet.moeda })
+    .update({ token: state.wallet.token })
     .eq("owner_id", state.user.id);
   if (error) console.error(error);
 }
@@ -307,10 +316,15 @@ $("#form-gladiador").addEventListener("submit", async (e) => {
 });
 
 // ===================== CAVERNA (PvE) =====================
-function renderTetoCaverna() {
-  const pct = Math.min(100, (state.todayMoedaEarned / ECONOMIA.tetoDiarioMoeda) * 100);
-  $("#cap-bar-fill").style.width = `${pct}%`;
-  $("#cap-meter-value").textContent = `${state.todayMoedaEarned} / ${ECONOMIA.tetoDiarioMoeda}`;
+function precoProximaDescida() {
+  return Number((state.descidasFeitas * ECONOMIA.custoIncrementoDescida).toFixed(2));
+}
+
+function renderStatusCaverna() {
+  const preco = precoProximaDescida();
+  $("#cave-preco-descida").textContent = preco === 0 ? "grátis" : `US$${fmt2(preco)}`;
+  $("#btn-descer").hidden = state.emDescida;
+  $("#cave-actions").hidden = !state.emDescida;
 }
 
 async function carregarItens() {
@@ -322,11 +336,53 @@ async function carregarItens() {
   renderGladiador();
 }
 
-$("#btn-explorar").addEventListener("click", async () => {
+$("#btn-descer").addEventListener("click", async () => {
   if (!(await exigirLogin())) return;
   if (!state.gladiator) return toast("Forje um gladiador primeiro.", "error");
-  if (state.todayMoedaEarned >= ECONOMIA.tetoDiarioMoeda) {
-    return toast("Teto diário de moeda atingido — volte amanhã.", "error");
+
+  const preco = precoProximaDescida();
+  if (preco > 0) {
+    if (state.wallet.token < preco) return toast("Token insuficiente para descer.", "error");
+    await ajustarWallet({ token: -preco });
+  }
+  state.descidasFeitas += 1;
+  state.emDescida = true;
+  renderStatusCaverna();
+  toast(preco === 0 ? "Descida grátis iniciada." : `Descida paga: -US$${fmt2(preco)}.`, "success");
+});
+
+$("#btn-subir").addEventListener("click", () => {
+  state.emDescida = false;
+  renderStatusCaverna();
+  toast("Você subiu da caverna com o que ganhou.", "success");
+});
+
+$("#btn-explorar").addEventListener("click", async () => {
+  if (!state.emDescida) return; // segurança extra; botão só aparece em descida
+  if (!state.gladiator) return toast("Forje um gladiador primeiro.", "error");
+
+  const ehTesouro = Math.random() < CHANCE_TESOURO;
+
+  if (ehTesouro) {
+    const tesouro = TESOUROS[randInt(0, TESOUROS.length - 1)];
+    const tokenGanho = Number(rand(tesouro.tokenMin, tesouro.tokenMax).toFixed(2));
+    let itemGanho = null;
+    if (Math.random() < tesouro.chanceItem) {
+      const template = ITENS_LOOT[randInt(0, ITENS_LOOT.length - 1)];
+      itemGanho = await concederItem(template);
+    }
+    await ajustarWallet({ token: tokenGanho });
+    // Nota: a coluna se chama "loot_moeda" no banco (schema antigo), mas
+    // agora guarda o valor em token/USDT — renomeie a coluna quando puder.
+    await supabaseClient.from("cave_runs").insert({
+      owner_id: state.user.id,
+      gladiator_id: state.gladiator.id,
+      resultado: "tesouro",
+      loot_moeda: tokenGanho,
+    });
+    adicionarLogCaverna({ monstro: tesouro.nome, venceu: true, tokenGanho, itemGanho, tipo: "tesouro" });
+    // Continua em descida — jogador escolhe explorar de novo ou subir.
+    return;
   }
 
   const monstro = MONSTROS[randInt(0, MONSTROS.length - 1)];
@@ -334,27 +390,20 @@ $("#btn-explorar").addEventListener("click", async () => {
   const poderMonstro = monstro.dificuldade * rand(0.7, 1.3);
   const venceu = poderGladiador >= poderMonstro;
 
-  let moedaGanha = 0;
+  let tokenGanho = 0;
   let itemGanho = null;
-  let resultado;
 
   if (venceu) {
-    moedaGanha = randInt(monstro.moedaMin, monstro.moedaMax);
-    moedaGanha = Math.min(moedaGanha, ECONOMIA.tetoDiarioMoeda - state.todayMoedaEarned);
+    tokenGanho = Number(rand(monstro.tokenMin, monstro.tokenMax).toFixed(2));
     if (Math.random() < monstro.chanceItem) {
       const template = ITENS_LOOT[randInt(0, ITENS_LOOT.length - 1)];
       itemGanho = await concederItem(template);
     }
     state.gladiator.vitorias = (state.gladiator.vitorias ?? 0) + 1;
-    resultado = "vitoria";
+    await ajustarWallet({ token: tokenGanho });
   } else {
-    moedaGanha = 0;
     state.gladiator.derrotas = (state.gladiator.derrotas ?? 0) + 1;
-    resultado = "derrota";
   }
-
-  state.todayMoedaEarned += moedaGanha;
-  if (moedaGanha > 0) await ajustarWallet({ moeda: moedaGanha });
 
   await supabaseClient
     .from("gladiators")
@@ -364,13 +413,20 @@ $("#btn-explorar").addEventListener("click", async () => {
   await supabaseClient.from("cave_runs").insert({
     owner_id: state.user.id,
     gladiator_id: state.gladiator.id,
-    resultado,
-    loot_moeda: moedaGanha,
+    resultado: venceu ? "vitoria" : "derrota",
+    loot_moeda: tokenGanho,
   });
 
-  renderTetoCaverna();
   renderGladiador();
-  adicionarLogCaverna({ monstro: monstro.nome, venceu, moedaGanha, itemGanho });
+  adicionarLogCaverna({ monstro: monstro.nome, venceu, tokenGanho, itemGanho, tipo: "monstro" });
+
+  if (!venceu) {
+    // Derrota encerra a descida automaticamente — só dá pra subir depois de
+    // matar o monstro ou coletar o tesouro, e aqui não houve nem um nem outro.
+    state.emDescida = false;
+    renderStatusCaverna();
+    toast(`${monstro.nome} venceu o combate — você foi expulso da caverna.`, "error");
+  }
 });
 
 async function concederItem(template) {
@@ -388,13 +444,14 @@ async function concederItem(template) {
   return data;
 }
 
-function adicionarLogCaverna({ monstro, venceu, moedaGanha, itemGanho }) {
+function adicionarLogCaverna({ monstro, venceu, tokenGanho, itemGanho, tipo }) {
   const lista = $("#log-caverna");
   if (lista.querySelector(".log-empty")) lista.innerHTML = "";
   const li = document.createElement("li");
   li.className = venceu ? "log-win" : "log-loss";
-  const partes = [`${venceu ? "Venceu" : "Perdeu para"} ${monstro}`];
-  if (moedaGanha > 0) partes.push(`+${moedaGanha} moeda`);
+  const acao = tipo === "tesouro" ? "Encontrou" : venceu ? "Venceu" : "Perdeu para";
+  const partes = [`${acao} ${monstro}`];
+  if (tokenGanho > 0) partes.push(`+US$${fmt2(tokenGanho)}`);
   if (itemGanho) partes.push(`item: ${itemGanho.nome}`);
   li.innerHTML = `<span>${partes[0]}</span><span class="item-value">${partes.slice(1).join(" · ") || "—"}</span>`;
   lista.prepend(li);
@@ -405,6 +462,7 @@ async function carregarFila() {
   const { count, error } = await supabaseClient.from("arena_queue").select("*", { count: "exact", head: true });
   if (error) return console.error(error);
   $("#queue-count").textContent = count ?? 0;
+  await atualizarBotaoArena();
 }
 
 $("#btn-entrar-arena").addEventListener("click", async () => {
@@ -414,11 +472,51 @@ $("#btn-entrar-arena").addEventListener("click", async () => {
     return toast("Token insuficiente para a inscrição.", "error");
   }
 
+  // Bug corrigido: antes disso não havia checagem, então o mesmo usuário/
+  // gladiador podia entrar na fila várias vezes (múltiplos cliques, abas
+  // simultâneas) e ocupar mais de uma vaga no mesmo bracket.
+  // 🔒 Essa checagem no cliente é só a primeira camada; o ideal é também ter
+  // uma constraint UNIQUE(owner_id) na tabela arena_queue no banco, pra
+  // bloquear de verdade mesmo se alguém chamar a API direto.
+  const { data: jaNaFila, error: erroCheck } = await supabaseClient
+    .from("arena_queue")
+    .select("id")
+    .eq("owner_id", state.user.id)
+    .maybeSingle();
+  if (erroCheck) return toast(`Erro ao checar fila: ${erroCheck.message}`, "error");
+  if (jaNaFila) return toast("Seu gladiador já está na fila da arena.", "error");
+
   await ajustarWallet({ token: -ECONOMIA.taxaInscricaoArena });
-  await supabaseClient.from("arena_queue").insert({ owner_id: state.user.id, gladiator_id: state.gladiator.id });
+  const { error } = await supabaseClient
+    .from("arena_queue")
+    .insert({ owner_id: state.user.id, gladiator_id: state.gladiator.id });
+  if (error) {
+    // Se a inserção falhar (ex: constraint UNIQUE do banco barrando),
+    // devolve o token já debitado.
+    await ajustarWallet({ token: ECONOMIA.taxaInscricaoArena });
+    return toast(`Erro ao entrar na fila: ${error.message}`, "error");
+  }
   toast("Inscrito na fila da arena.", "success");
+  atualizarBotaoArena();
   await tentarFecharBracket();
 });
+
+async function atualizarBotaoArena() {
+  if (!state.user) return;
+  const { data } = await supabaseClient
+    .from("arena_queue")
+    .select("id")
+    .eq("owner_id", state.user.id)
+    .maybeSingle();
+  const botao = $("#btn-entrar-arena");
+  if (data) {
+    botao.disabled = true;
+    botao.textContent = "Aguardando bracket fechar...";
+  } else {
+    botao.disabled = false;
+    botao.textContent = "Entrar na arena";
+  }
+}
 
 async function tentarFecharBracket() {
   const { data: fila, error } = await supabaseClient
@@ -680,20 +778,6 @@ async function comprarItem(listingId) {
   await Promise.all([carregarItens(), carregarMercado()]);
 }
 
-// ===================== CONVERSÃO TOKEN → MOEDA =====================
-$("#form-converter").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  if (!(await exigirLogin())) return;
-  const quantidade = Number($("#input-converter-token").value);
-  if (quantidade <= 0) return;
-  if (state.wallet.token < quantidade) return toast("Token insuficiente.", "error");
-
-  const moedaRecebida = Math.round(quantidade * ECONOMIA.taxaCambioTokenMoeda);
-  await ajustarWallet({ token: -quantidade, moeda: moedaRecebida });
-  toast(`Convertido: -${fmt2(quantidade)} token → +${moedaRecebida} moeda.`, "success");
-  e.target.reset();
-});
-
 // ===================== INIT =====================
-renderTetoCaverna();
+renderStatusCaverna();
 if (window.__debugLog) window.__debugLog("[log] script.js: terminou de rodar até o fim, listeners deveriam estar ativos");

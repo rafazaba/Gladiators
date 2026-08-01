@@ -270,25 +270,17 @@ main { max-width: 1080px; margin: 0 auto; padding: 1.75rem 1.5rem 4rem; }
 .record strong { color: var(--bone); font-family: var(--font-mono); }
 
 /* ===================== CAVE ===================== */
-.cap-meter { margin-bottom: 1.1rem; }
-.cap-meter span { font-size: 0.8rem; color: var(--bone-dim); }
-.cap-bar {
-  height: 8px;
-  background: var(--stone-800);
-  border: 1px solid var(--stone-700);
-  border-radius: 99px;
-  margin: 0.4rem 0;
-  overflow: hidden;
-}
-.cap-bar-fill {
-  height: 100%;
-  width: 0%;
-  background: linear-gradient(90deg, var(--moss), var(--bronze));
-  transition: width 0.3s ease;
-}
-.cap-meter-value {
+.cave-status {
   font-family: var(--font-mono);
-  color: var(--bone);
+  color: var(--bone-dim);
+  margin-bottom: 1.1rem;
+}
+.cave-status strong { color: var(--bronze); }
+.cave-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
 }
 
 /* ===================== LISTS / LOGS ===================== */
