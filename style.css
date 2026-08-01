@@ -368,29 +368,6 @@ main { max-width: 1080px; margin: 0 auto; padding: 1.75rem 1.5rem 4rem; }
 }
 .modal .btn-ghost { margin-top: 0.6rem; width: 100%; }
 
-.auth-tabs {
-  display: flex;
-  gap: 0.4rem;
-  margin-bottom: 1rem;
-}
-.auth-tab-btn {
-  flex: 1;
-  padding: 0.6rem;
-  background: var(--stone-800);
-  border: 1px solid var(--stone-700);
-  border-radius: var(--radius);
-  color: var(--bone-dim);
-  font-family: inherit;
-  cursor: pointer;
-}
-.auth-tab-btn.is-active {
-  background: var(--bronze);
-  color: var(--stone-950);
-  font-weight: 600;
-}
-.auth-panel { display: none; }
-.auth-panel.is-active { display: block; }
-
 .toast-container {
   position: fixed;
   bottom: 1.2rem;

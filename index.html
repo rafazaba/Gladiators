@@ -222,44 +222,9 @@
 <!-- ===================== MODAL DE LOGIN ===================== -->
 <div class="modal-backdrop" id="auth-modal" hidden>
   <div class="modal">
-    <div class="auth-tabs">
-      <button type="button" class="auth-tab-btn is-active" data-auth-tab="entrar">Entrar</button>
-      <button type="button" class="auth-tab-btn" data-auth-tab="criar">Criar conta</button>
-    </div>
-
-    <form id="form-login" class="auth-panel is-active" data-auth-panel="entrar">
-      <label class="field">
-        <span>E-mail</span>
-        <input type="email" id="input-login-email" required />
-      </label>
-      <label class="field">
-        <span>Senha</span>
-        <input type="password" id="input-login-senha" required minlength="6" />
-      </label>
-      <button type="submit" class="btn btn-primary">Entrar</button>
-    </form>
-
-    <form id="form-cadastro" class="auth-panel" data-auth-panel="criar" hidden>
-      <label class="field">
-        <span>Nome de usuário</span>
-        <input type="text" id="input-cadastro-username" required minlength="3" maxlength="24" />
-      </label>
-      <label class="field">
-        <span>E-mail</span>
-        <input type="email" id="input-cadastro-email" required />
-      </label>
-      <label class="field">
-        <span>Senha</span>
-        <input type="password" id="input-cadastro-senha" required minlength="6" />
-      </label>
-      <label class="field">
-        <span>Confirmar senha</span>
-        <input type="password" id="input-cadastro-senha-confirma" required minlength="6" />
-      </label>
-      <button type="submit" class="btn btn-primary">Criar conta</button>
-      <p class="card-hint">Você vai receber um e-mail de confirmação. É preciso confirmar antes de entrar.</p>
-    </form>
-
+    <h2 class="card-title">Entrar na arena</h2>
+    <p class="card-hint">Login rápido e gratuito com sua conta Google.</p>
+    <button class="btn btn-primary" id="btn-google-login">Entrar com Google</button>
     <button class="btn btn-ghost" id="btn-fechar-modal">Fechar</button>
   </div>
 </div>

@@ -101,10 +101,11 @@ $$(".tab-btn").forEach((btn) => {
 });
 
 // ===================== AUTENTICAÇÃO =====================
-// URL completa de retorno do e-mail de confirmação. Importante usar a URL
-// completa (com o /Gladiators/ no final), não window.location.origin —
-// origin sozinho corta o path e manda pra raiz do domínio, que não existe
-// nesse caso (site hospedado em subpasta no GitHub Pages).
+// URL completa de retorno do OAuth. Importante usar a URL completa (com o
+// /Gladiators/ no final), não window.location.origin — origin sozinho corta
+// o path e manda pra raiz do domínio, que não existe (site em subpasta no
+// GitHub Pages). Essa URL precisa estar em Authentication > URL Configuration
+// > Redirect URLs no painel do Supabase.
 const AUTH_REDIRECT_URL = window.location.origin + window.location.pathname;
 
 $("#btn-login").addEventListener("click", async () => {
@@ -116,85 +117,15 @@ $("#btn-login").addEventListener("click", async () => {
 });
 $("#btn-fechar-modal").addEventListener("click", () => ($("#auth-modal").hidden = true));
 
-$$(".auth-tab-btn").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    $$(".auth-tab-btn").forEach((b) => b.classList.remove("is-active"));
-    $$(".auth-panel").forEach((p) => {
-      p.classList.remove("is-active");
-      p.hidden = true;
-    });
-    btn.classList.add("is-active");
-    const painel = $(`.auth-panel[data-auth-panel="${btn.dataset.authTab}"]`);
-    painel.classList.add("is-active");
-    painel.hidden = false;
+$("#btn-google-login").addEventListener("click", async () => {
+  const { error } = await supabaseClient.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo: AUTH_REDIRECT_URL },
   });
-});
-
-$("#form-login").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const email = $("#input-login-email").value.trim();
-  const senha = $("#input-login-senha").value;
-  const botao = e.target.querySelector('button[type="submit"]');
-
-  botao.disabled = true;
-  const { error } = await supabaseClient.auth.signInWithPassword({ email, password: senha });
-  botao.disabled = false;
-
-  if (error) {
-    if (/email not confirmed/i.test(error.message)) {
-      return toast("Confirme seu e-mail antes de entrar (verifique a caixa de entrada e o spam).", "error");
-    }
-    if (/invalid login credentials/i.test(error.message)) {
-      return toast("E-mail ou senha incorretos.", "error");
-    }
-    return toast(`Erro ao entrar: ${error.message}`, "error");
-  }
-  toast("Login realizado!", "success");
-  $("#auth-modal").hidden = true;
-  e.target.reset();
-});
-
-$("#form-cadastro").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const username = $("#input-cadastro-username").value.trim();
-  const email = $("#input-cadastro-email").value.trim();
-  const senha = $("#input-cadastro-senha").value;
-  const confirmaSenha = $("#input-cadastro-senha-confirma").value;
-  const botao = e.target.querySelector('button[type="submit"]');
-
-  if (senha !== confirmaSenha) return toast("As senhas não coincidem.", "error");
-  if (senha.length < 6) return toast("A senha precisa ter pelo menos 6 caracteres.", "error");
-
-  botao.disabled = true;
-  const { data, error } = await supabaseClient.auth.signUp({
-    email,
-    password: senha,
-    options: {
-      emailRedirectTo: AUTH_REDIRECT_URL,
-      data: { username }, // vai pro user_metadata; usado pra criar o profile depois de confirmar
-    },
-  });
-  botao.disabled = false;
-
-  if (error) {
-    if (error.status === 429 || /rate limit/i.test(error.message)) {
-      return toast("Muitas tentativas. Aguarde alguns minutos ou configure um SMTP customizado no Supabase.", "error");
-    }
-    if (/already registered/i.test(error.message)) {
-      return toast("Esse e-mail já tem conta. Tente entrar.", "error");
-    }
-    return toast(`Erro ao criar conta: ${error.message}`, "error");
-  }
-
-  // Se o Supabase já retorna um usuário SEM sessão, é sinal de que a
-  // confirmação de e-mail está ativa (comportamento esperado aqui).
-  if (data.user && !data.session) {
-    toast("Conta criada! Confira seu e-mail para confirmar antes de entrar.", "success");
-  } else {
-    toast("Conta criada e login realizado!", "success");
-  }
-  $("#auth-modal").hidden = true;
-  e.target.reset();
+  // Em fluxo OAuth bem-sucedido o navegador é redirecionado pro Google antes
+  // de qualquer resposta chegar aqui — só cai nesse erro se falhar de cara
+  // (ex: provider Google não habilitado no Supabase).
+  if (error) toast(`Erro ao entrar com Google: ${error.message}`, "error");
 });
 
 supabaseClient.auth.onAuthStateChange(async (_event, session) => {
@@ -202,14 +133,15 @@ supabaseClient.auth.onAuthStateChange(async (_event, session) => {
   if (state.user) {
     await garantirProfile();
     $("#btn-login").textContent = state.profileUsername || state.user.email;
+    $("#auth-modal").hidden = true;
     await carregarPerfilCompleto();
   } else {
     $("#btn-login").textContent = "Entrar";
   }
 });
 
-// Cria o registro em profiles na primeira vez que o usuário loga depois de
-// confirmar o e-mail (o username veio no user_metadata lá do cadastro).
+// Cria o registro em profiles na primeira vez que o usuário loga com Google
+// (username vem do nome da conta Google; dá pra editar depois no app).
 async function garantirProfile() {
   const { data: perfilExistente } = await supabaseClient
     .from("profiles")
@@ -222,17 +154,22 @@ async function garantirProfile() {
     return;
   }
 
-  const usernameDesejado = state.user.user_metadata?.username || state.user.email.split("@")[0];
+  const usernameDesejado =
+    state.user.user_metadata?.full_name ||
+    state.user.user_metadata?.name ||
+    state.user.email?.split("@")[0] ||
+    "Gladiador";
+
   const { error } = await supabaseClient
     .from("profiles")
     .insert({ id: state.user.id, username: usernameDesejado });
 
-  state.profileUsername = error ? state.user.email : usernameDesejado;
+  state.profileUsername = error ? (state.user.email || "Gladiador") : usernameDesejado;
 }
 
 async function exigirLogin() {
   if (!state.user) {
-    toast("Entre ou crie uma conta primeiro.", "error");
+    toast("Entre com sua conta Google primeiro.", "error");
     $("#auth-modal").hidden = false;
     return false;
   }
