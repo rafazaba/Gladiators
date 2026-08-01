@@ -49,7 +49,6 @@ const ECONOMIA = {
   taxaMinimaMarketplace: 0.03,  // sobre o valor de referência do item
 };
 
-const DISTRIBUICAO_PREMIO = { primeiro: 0.5, segundo: 0.25, terceiroQuarto: 0.125 };
 
 // Recompensas em token (antes eram em "moeda", convertidas aqui na razão
 // antiga de 10:1 pra manter o mesmo equilíbrio econômico agora que só existe token).
@@ -507,36 +506,24 @@ async function carregarFila() {
 $("#btn-entrar-arena").addEventListener("click", async () => {
   if (!(await exigirLogin())) return;
   if (!state.gladiator) return toast("Forje um gladiador primeiro.", "error");
-  if (state.wallet.token < ECONOMIA.taxaInscricaoArena) {
-    return toast("Token insuficiente para a inscrição.", "error");
-  }
 
-  // Bug corrigido: antes disso não havia checagem, então o mesmo usuário/
-  // gladiador podia entrar na fila várias vezes (múltiplos cliques, abas
-  // simultâneas) e ocupar mais de uma vaga no mesmo bracket.
-  // 🔒 Essa checagem no cliente é só a primeira camada; o ideal é também ter
-  // uma constraint UNIQUE(owner_id) na tabela arena_queue no banco, pra
-  // bloquear de verdade mesmo se alguém chamar a API direto.
-  const { data: jaNaFila, error: erroCheck } = await supabaseClient
-    .from("arena_queue")
-    .select("id")
-    .eq("owner_id", state.user.id)
-    .maybeSingle();
-  if (erroCheck) return toast(`Erro ao checar fila: ${erroCheck.message}`, "error");
-  if (jaNaFila) return toast("Seu gladiador já está na fila da arena.", "error");
+  const precoEstimado = ECONOMIA.taxaInscricaoArena;
+  if (state.wallet.token < precoEstimado) return toast("Token insuficiente para a inscrição.", "error");
 
-  await ajustarWallet({ token: -ECONOMIA.taxaInscricaoArena });
-  const { error } = await supabaseClient
-    .from("arena_queue")
-    .insert({ owner_id: state.user.id, gladiator_id: state.gladiator.id });
+  const botao = $("#btn-entrar-arena");
+  botao.disabled = true;
+  const { error } = await supabaseClient.rpc("entrar_fila_arena", { p_gladiator_id: state.gladiator.id });
+  botao.disabled = false;
+
   if (error) {
-    // Se a inserção falhar (ex: constraint UNIQUE do banco barrando),
-    // devolve o token já debitado.
-    await ajustarWallet({ token: ECONOMIA.taxaInscricaoArena });
-    return toast(`Erro ao entrar na fila: ${error.message}`, "error");
+    if (/ja_na_fila/i.test(error.message)) return toast("Seu gladiador já está na fila da arena.", "error");
+    if (/saldo_insuficiente/i.test(error.message)) return toast("Token insuficiente para a inscrição.", "error");
+    return toast(`Erro ao entrar na fila: ${error.message}. Rodou o schema_economia_atomica.sql?`, "error");
   }
+
+  await carregarWallet(); // token já foi debitado no servidor
   toast("Inscrito na fila da arena.", "success");
-  atualizarBotaoArena();
+  await atualizarBotaoArena();
   await tentarFecharBracket();
 });
 
@@ -558,128 +545,27 @@ async function atualizarBotaoArena() {
 }
 
 async function tentarFecharBracket() {
-  const { data: fila, error } = await supabaseClient
-    .from("arena_queue")
-    .select("id, owner_id, gladiator_id, gladiators(*)")
-    .order("criado_em", { ascending: true });
-  if (error) return console.error(error);
+  // Tudo isso (sorteio, combate, prêmios) roda no servidor agora — o
+  // cliente só chama a função e desenha o resultado que ela devolve.
+  const { data: resultado, error } = await supabaseClient.rpc("fechar_bracket_arena");
+  if (error) {
+    console.error(error);
+    return toast(`Erro ao fechar bracket: ${error.message}. Rodou o schema_economia_atomica.sql?`, "error");
+  }
 
-  let tamanho = 0;
-  if (fila.length >= ECONOMIA.bracketGrande) tamanho = ECONOMIA.bracketGrande;
-  else if (fila.length >= ECONOMIA.bracketMedio) tamanho = ECONOMIA.bracketMedio;
-  else if (fila.length >= ECONOMIA.bracketPequeno) tamanho = ECONOMIA.bracketPequeno;
-
-  if (tamanho === 0) {
-    $("#queue-status").innerHTML = `Fila: <strong>${fila.length}</strong> gladiador(es) aguardando — faltam ${
-      ECONOMIA.bracketPequeno - fila.length
+  if (resultado.status === "aguardando") {
+    $("#queue-status").innerHTML = `Fila: <strong>${resultado.fila}</strong> gladiador(es) aguardando — faltam ${
+      Math.max(0, ECONOMIA.bracketPequeno - resultado.fila)
     } para abrir a menor arena.`;
     return;
   }
 
-  const participantes = fila.slice(0, tamanho);
-  // remove os selecionados da fila
-  await supabaseClient.from("arena_queue").delete().in("id", participantes.map((p) => p.id));
-
-  const resultado = rodarBracket(participantes.map((p) => ({
-    owner_id: p.owner_id,
-    gladiador: p.gladiators,
-  })));
-
-  await distribuirPremios(resultado, tamanho);
-  await supabaseClient.from("arena_matches").insert({
-    bracket_size: tamanho,
-    participantes: participantes.map((p) => p.gladiator_id),
-    resultado,
-  });
-
-  renderBracket(resultado, tamanho);
+  renderBracket(resultado);
   await carregarFila();
   await carregarWallet();
 }
 
-function rodarBracket(participantesIniciais) {
-  // Single elimination com sorteio aleatório de confrontos.
-  // 🔒 O RNG deve rodar no servidor num jogo real, para não poder ser manipulado no cliente.
-  let atual = embaralhar([...participantesIniciais]);
-  const rounds = [];
-  let terceiroQuartoCandidatos = [];
-
-  while (atual.length > 1) {
-    const proximaRodada = [];
-    const confrontosDaRodada = [];
-    for (let i = 0; i < atual.length; i += 2) {
-      const a = atual[i];
-      const b = atual[i + 1];
-      const vencedor = resolverCombate(a, b);
-      const perdedor = vencedor === a ? b : a;
-      confrontosDaRodada.push({ a, b, vencedor });
-      proximaRodada.push(vencedor);
-      if (atual.length === 4) terceiroQuartoCandidatos.push(perdedor); // semifinalistas perdedores
-    }
-    rounds.push(confrontosDaRodada);
-    atual = proximaRodada;
-  }
-
-  return {
-    campeao: atual[0],
-    rounds,
-    terceiroQuarto: terceiroQuartoCandidatos,
-  };
-}
-
-function resolverCombate(a, b) {
-  const poderA = poderDoParticipante(a) * rand(0.75, 1.25);
-  const poderB = poderDoParticipante(b) * rand(0.75, 1.25);
-  return poderA >= poderB ? a : b;
-}
-
-function poderDoParticipante(p) {
-  const g = p.gladiador;
-  return (g.forca ?? 0) + (g.resistencia ?? 0) + (g.agilidade ?? 0);
-}
-
-function embaralhar(arr) {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = randInt(0, i);
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
-
-async function distribuirPremios(resultado, tamanho) {
-  // 🔒 Em produção, calcule e credite isso no backend, não no cliente.
-  const poolTotal = tamanho * ECONOMIA.taxaInscricaoArena;
-  const casa = poolTotal * ECONOMIA.taxaCasaTorneio;
-  const distribuivel = poolTotal - casa;
-
-  const premios = new Map();
-  premios.set(resultado.campeao.owner_id, distribuivel * DISTRIBUICAO_PREMIO.primeiro);
-
-  const finalRound = resultado.rounds[resultado.rounds.length - 1][0];
-  const vice = finalRound.a === resultado.campeao ? finalRound.b : finalRound.a;
-  premios.set(vice.owner_id, distribuivel * DISTRIBUICAO_PREMIO.segundo);
-
-  resultado.terceiroQuarto.forEach((p) => {
-    premios.set(p.owner_id, (premios.get(p.owner_id) ?? 0) + distribuivel * DISTRIBUICAO_PREMIO.terceiroQuarto);
-  });
-
-  for (const [ownerId, valor] of premios.entries()) {
-    if (ownerId === state.user.id) {
-      await ajustarWallet({ token: valor });
-    } else {
-      // outros jogadores: soma direto na wallet deles via update condicional
-      const { data } = await supabaseClient.from("wallets").select("token").eq("owner_id", ownerId).maybeSingle();
-      if (data) {
-        await supabaseClient
-          .from("wallets")
-          .update({ token: Number((data.token + valor).toFixed(4)) })
-          .eq("owner_id", ownerId);
-      }
-    }
-  }
-}
-
-function renderBracket(resultado, tamanho) {
+function renderBracket(resultado) {
   const container = $("#bracket-container");
   container.innerHTML = "";
   resultado.rounds.forEach((rodada, idx) => {
@@ -692,9 +578,9 @@ function renderBracket(resultado, tamanho) {
     rodada.forEach((confronto) => {
       const div = document.createElement("div");
       div.className = "bracket-match";
-      const nomeA = confronto.a.gladiador.nome;
-      const nomeB = confronto.b.gladiador.nome;
-      const vencedorNome = confronto.vencedor.gladiador.nome;
+      const nomeA = confronto.a.nome;
+      const nomeB = confronto.b.nome;
+      const vencedorNome = confronto.vencedor.nome;
       div.innerHTML = `
         <div class="${vencedorNome === nomeA ? "winner" : "loser"}">${nomeA}</div>
         <div class="${vencedorNome === nomeB ? "winner" : "loser"}">${nomeB}</div>`;
@@ -702,7 +588,7 @@ function renderBracket(resultado, tamanho) {
     });
     container.appendChild(col);
   });
-  toast(`Torneio (${tamanho} gladiadores) encerrado — campeão: ${resultado.campeao.gladiador.nome}`, "success");
+  toast(`Torneio (${resultado.tamanho} gladiadores) encerrado — campeão: ${resultado.campeao.nome}`, "success");
 }
 
 // ===================== MERCADO =====================
@@ -783,38 +669,17 @@ async function carregarMercado() {
 
 async function comprarItem(listingId) {
   if (!(await exigirLogin())) return;
-  const { data: listing, error } = await supabaseClient
-    .from("marketplace_listings")
-    .select("*, items(*)")
-    .eq("id", listingId)
-    .single();
-  if (error || !listing) return toast("Anúncio não encontrado.", "error");
-  if (state.wallet.token < listing.preco) return toast("Token insuficiente.", "error");
 
-  // 🔒 Toda essa transação (pagamento + taxa + transferência) deve
-  // rodar atômica no backend, não sequencialmente no cliente.
-  const taxa = Math.max(listing.preco * 0.0, listing.items.valor_referencia * ECONOMIA.taxaMinimaMarketplace);
-  const valorVendedor = listing.preco - taxa;
-
-  await ajustarWallet({ token: -listing.preco });
-
-  const { data: walletVendedor } = await supabaseClient
-    .from("wallets")
-    .select("token")
-    .eq("owner_id", listing.vendedor_id)
-    .maybeSingle();
-  if (walletVendedor) {
-    await supabaseClient
-      .from("wallets")
-      .update({ token: Number((walletVendedor.token + valorVendedor).toFixed(4)) })
-      .eq("owner_id", listing.vendedor_id);
+  const { error } = await supabaseClient.rpc("comprar_item", { p_listing_id: listingId });
+  if (error) {
+    if (/saldo_insuficiente/i.test(error.message)) return toast("Token insuficiente.", "error");
+    if (/anuncio_nao_encontrado|anuncio_indisponivel/i.test(error.message)) return toast("Anúncio não disponível.", "error");
+    if (/nao_pode_comprar_proprio_item/i.test(error.message)) return toast("Você não pode comprar seu próprio item.", "error");
+    return toast(`Erro ao comprar: ${error.message}. Rodou o schema_economia_atomica.sql?`, "error");
   }
 
-  await supabaseClient.from("items").update({ owner_id: state.user.id, gladiator_id: null, equipado: false }).eq("id", listing.items.id);
-  await supabaseClient.from("marketplace_listings").update({ status: "vendido" }).eq("id", listingId);
-
-  toast(`Item comprado. Taxa retida: US$${fmt2(taxa)}.`, "success");
-  await Promise.all([carregarItens(), carregarMercado()]);
+  toast("Item comprado.", "success");
+  await Promise.all([carregarWallet(), carregarItens(), carregarMercado()]);
 }
 
 // ===================== INIT =====================
