@@ -68,6 +68,7 @@ const ITENS_LOOT = [
 // ===================== ESTADO LOCAL =====================
 const state = {
   user: null,
+  profileUsername: null,
   wallet: { token: 0, moeda: 0 },
   gladiator: null,
   items: [],
@@ -100,49 +101,138 @@ $$(".tab-btn").forEach((btn) => {
 });
 
 // ===================== AUTENTICAÇÃO =====================
-$("#btn-login").addEventListener("click", () => ($("#auth-modal").hidden = false));
+// URL completa de retorno do e-mail de confirmação. Importante usar a URL
+// completa (com o /Gladiators/ no final), não window.location.origin —
+// origin sozinho corta o path e manda pra raiz do domínio, que não existe
+// nesse caso (site hospedado em subpasta no GitHub Pages).
+const AUTH_REDIRECT_URL = window.location.origin + window.location.pathname;
+
+$("#btn-login").addEventListener("click", async () => {
+  if (state.user) {
+    if (confirm("Sair da conta?")) await supabaseClient.auth.signOut();
+    return;
+  }
+  $("#auth-modal").hidden = false;
+});
 $("#btn-fechar-modal").addEventListener("click", () => ($("#auth-modal").hidden = true));
+
+$$(".auth-tab-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    $$(".auth-tab-btn").forEach((b) => b.classList.remove("is-active"));
+    $$(".auth-panel").forEach((p) => {
+      p.classList.remove("is-active");
+      p.hidden = true;
+    });
+    btn.classList.add("is-active");
+    const painel = $(`.auth-panel[data-auth-panel="${btn.dataset.authTab}"]`);
+    painel.classList.add("is-active");
+    painel.hidden = false;
+  });
+});
 
 $("#form-login").addEventListener("submit", async (e) => {
   e.preventDefault();
-  if (window.__debugLog) window.__debugLog("[log] submit do login interceptado");
   const email = $("#input-login-email").value.trim();
+  const senha = $("#input-login-senha").value;
   const botao = e.target.querySelector('button[type="submit"]');
 
   botao.disabled = true;
-  const { error } = await supabaseClient.auth.signInWithOtp({
+  const { error } = await supabaseClient.auth.signInWithPassword({ email, password: senha });
+  botao.disabled = false;
+
+  if (error) {
+    if (/email not confirmed/i.test(error.message)) {
+      return toast("Confirme seu e-mail antes de entrar (verifique a caixa de entrada e o spam).", "error");
+    }
+    if (/invalid login credentials/i.test(error.message)) {
+      return toast("E-mail ou senha incorretos.", "error");
+    }
+    return toast(`Erro ao entrar: ${error.message}`, "error");
+  }
+  toast("Login realizado!", "success");
+  $("#auth-modal").hidden = true;
+  e.target.reset();
+});
+
+$("#form-cadastro").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const username = $("#input-cadastro-username").value.trim();
+  const email = $("#input-cadastro-email").value.trim();
+  const senha = $("#input-cadastro-senha").value;
+  const confirmaSenha = $("#input-cadastro-senha-confirma").value;
+  const botao = e.target.querySelector('button[type="submit"]');
+
+  if (senha !== confirmaSenha) return toast("As senhas não coincidem.", "error");
+  if (senha.length < 6) return toast("A senha precisa ter pelo menos 6 caracteres.", "error");
+
+  botao.disabled = true;
+  const { data, error } = await supabaseClient.auth.signUp({
     email,
-    options: { emailRedirectTo: window.location.origin },
+    password: senha,
+    options: {
+      emailRedirectTo: AUTH_REDIRECT_URL,
+      data: { username }, // vai pro user_metadata; usado pra criar o profile depois de confirmar
+    },
   });
   botao.disabled = false;
 
   if (error) {
-    // Supabase retorna 429 quando o SMTP padrão (limite de ~2 e-mails/hora)
-    // ou algum rate limit de auth é atingido. Isso NÃO é bug do app —
-    // é preciso configurar um SMTP customizado (Resend/SendGrid/Mailtrap)
-    // em Project Settings > Auth > SMTP Settings para resolver de vez.
     if (error.status === 429 || /rate limit/i.test(error.message)) {
-      return toast("Muitas tentativas de envio. Aguarde alguns minutos ou configure um SMTP customizado no Supabase.", "error");
+      return toast("Muitas tentativas. Aguarde alguns minutos ou configure um SMTP customizado no Supabase.", "error");
     }
-    return toast(`Erro ao enviar link: ${error.message}`, "error");
+    if (/already registered/i.test(error.message)) {
+      return toast("Esse e-mail já tem conta. Tente entrar.", "error");
+    }
+    return toast(`Erro ao criar conta: ${error.message}`, "error");
   }
-  toast("Link enviado! Confira seu e-mail (e a caixa de spam).", "success");
+
+  // Se o Supabase já retorna um usuário SEM sessão, é sinal de que a
+  // confirmação de e-mail está ativa (comportamento esperado aqui).
+  if (data.user && !data.session) {
+    toast("Conta criada! Confira seu e-mail para confirmar antes de entrar.", "success");
+  } else {
+    toast("Conta criada e login realizado!", "success");
+  }
   $("#auth-modal").hidden = true;
+  e.target.reset();
 });
 
 supabaseClient.auth.onAuthStateChange(async (_event, session) => {
   state.user = session?.user ?? null;
   if (state.user) {
-    $("#btn-login").textContent = state.user.email;
+    await garantirProfile();
+    $("#btn-login").textContent = state.profileUsername || state.user.email;
     await carregarPerfilCompleto();
   } else {
     $("#btn-login").textContent = "Entrar";
   }
 });
 
+// Cria o registro em profiles na primeira vez que o usuário loga depois de
+// confirmar o e-mail (o username veio no user_metadata lá do cadastro).
+async function garantirProfile() {
+  const { data: perfilExistente } = await supabaseClient
+    .from("profiles")
+    .select("username")
+    .eq("id", state.user.id)
+    .maybeSingle();
+
+  if (perfilExistente) {
+    state.profileUsername = perfilExistente.username;
+    return;
+  }
+
+  const usernameDesejado = state.user.user_metadata?.username || state.user.email.split("@")[0];
+  const { error } = await supabaseClient
+    .from("profiles")
+    .insert({ id: state.user.id, username: usernameDesejado });
+
+  state.profileUsername = error ? state.user.email : usernameDesejado;
+}
+
 async function exigirLogin() {
   if (!state.user) {
-    toast("Entre com seu e-mail primeiro.", "error");
+    toast("Entre ou crie uma conta primeiro.", "error");
     $("#auth-modal").hidden = false;
     return false;
   }
@@ -155,7 +245,7 @@ async function carregarPerfilCompleto() {
 }
 
 async function carregarWallet() {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseClient
     .from("wallets")
     .select("token, moeda")
     .eq("owner_id", state.user.id)
@@ -181,7 +271,7 @@ async function ajustarWallet({ token = 0, moeda = 0 }) {
   state.wallet.token = Number((state.wallet.token + token).toFixed(4));
   state.wallet.moeda = Math.max(0, state.wallet.moeda + moeda);
   renderWallet();
-  const { error } = await supabase
+  const { error } = await supabaseClient
     .from("wallets")
     .update({ token: state.wallet.token, moeda: state.wallet.moeda })
     .eq("owner_id", state.user.id);
@@ -189,7 +279,7 @@ async function ajustarWallet({ token = 0, moeda = 0 }) {
 }
 
 async function carregarGladiador() {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseClient
     .from("gladiators")
     .select("*")
     .eq("owner_id", state.user.id)
@@ -267,7 +357,7 @@ $("#form-gladiador").addEventListener("submit", async (e) => {
   const resistencia = Math.max(1, Math.round(peso * 0.55 + randInt(0, 8)));
   const agilidade = Math.max(1, Math.round(altura * 0.35 - peso * 0.1 + randInt(0, 8)));
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseClient
     .from("gladiators")
     .insert({ owner_id: state.user.id, nome, altura, peso, forca, resistencia, agilidade, vitorias: 0, derrotas: 0 })
     .select()
@@ -329,7 +419,7 @@ $("#btn-explorar").addEventListener("click", async () => {
   state.todayMoedaEarned += moedaGanha;
   if (moedaGanha > 0) await ajustarWallet({ moeda: moedaGanha });
 
-  await supabase
+  await supabaseClient
     .from("gladiators")
     .update({ vitorias: state.gladiator.vitorias, derrotas: state.gladiator.derrotas })
     .eq("id", state.gladiator.id);
@@ -347,7 +437,7 @@ $("#btn-explorar").addEventListener("click", async () => {
 });
 
 async function concederItem(template) {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseClient
     .from("items")
     .insert({ owner_id: state.user.id, gladiator_id: null, equipado: false, ...template })
     .select()
@@ -394,7 +484,7 @@ $("#btn-entrar-arena").addEventListener("click", async () => {
 });
 
 async function tentarFecharBracket() {
-  const { data: fila, error } = await supabase
+  const { data: fila, error } = await supabaseClient
     .from("arena_queue")
     .select("id, owner_id, gladiator_id, gladiators(*)")
     .order("criado_em", { ascending: true });
@@ -506,7 +596,7 @@ async function distribuirPremios(resultado, tamanho) {
       // outros jogadores: soma direto na wallet deles via update condicional
       const { data } = await supabaseClient.from("wallets").select("token").eq("owner_id", ownerId).maybeSingle();
       if (data) {
-        await supabase
+        await supabaseClient
           .from("wallets")
           .update({ token: Number((data.token + valor).toFixed(4)) })
           .eq("owner_id", ownerId);
@@ -590,7 +680,7 @@ $("#form-listar-item").addEventListener("submit", async (e) => {
 });
 
 async function carregarMercado() {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseClient
     .from("marketplace_listings")
     .select("id, preco, vendedor_id, items(*)")
     .eq("status", "ativo")
@@ -619,7 +709,7 @@ async function carregarMercado() {
 
 async function comprarItem(listingId) {
   if (!(await exigirLogin())) return;
-  const { data: listing, error } = await supabase
+  const { data: listing, error } = await supabaseClient
     .from("marketplace_listings")
     .select("*, items(*)")
     .eq("id", listingId)
@@ -634,13 +724,13 @@ async function comprarItem(listingId) {
 
   await ajustarWallet({ token: -listing.preco });
 
-  const { data: walletVendedor } = await supabase
+  const { data: walletVendedor } = await supabaseClient
     .from("wallets")
     .select("token")
     .eq("owner_id", listing.vendedor_id)
     .maybeSingle();
   if (walletVendedor) {
-    await supabase
+    await supabaseClient
       .from("wallets")
       .update({ token: Number((walletVendedor.token + valorVendedor).toFixed(4)) })
       .eq("owner_id", listing.vendedor_id);
