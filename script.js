@@ -1,7 +1,7 @@
 /* =========================================================
    ARENA — lógica do jogo
    ========================================================= */
-alert("DIAGNÓSTICO 1: script.js começou a rodar.");
+if (window.__debugLog) window.__debugLog("[log] script.js: topo do arquivo executando");
 
 
 // ===================== DIAGNÓSTICO: erro global visível =====================
@@ -105,7 +105,7 @@ $("#btn-fechar-modal").addEventListener("click", () => ($("#auth-modal").hidden 
 
 $("#form-login").addEventListener("submit", async (e) => {
   e.preventDefault();
-  alert("DIAGNÓSTICO 2: o submit foi interceptado (preventDefault chamado).");
+  if (window.__debugLog) window.__debugLog("[log] submit do login interceptado");
   const email = $("#input-login-email").value.trim();
   const botao = e.target.querySelector('button[type="submit"]');
 
@@ -669,3 +669,4 @@ $("#form-converter").addEventListener("submit", async (e) => {
 
 // ===================== INIT =====================
 renderTetoCaverna();
+if (window.__debugLog) window.__debugLog("[log] script.js: terminou de rodar até o fim, listeners deveriam estar ativos");

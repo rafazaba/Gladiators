@@ -8,6 +8,37 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Barlow+Condensed:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="style.css" />
+<script>
+  // ===================== PAINEL DE DIAGNÓSTICO NA TELA =====================
+  // Mostra logs e erros direto na página, sem precisar de DevTools/console
+  // (útil pra depurar no celular). Remover depois que tudo estiver ok.
+  (function () {
+    var panel = document.createElement("div");
+    panel.id = "debug-panel";
+    panel.style.cssText =
+      "position:fixed;left:0;right:0;bottom:0;max-height:40vh;overflow:auto;" +
+      "background:#111;color:#0f0;font:11px/1.4 monospace;padding:8px;" +
+      "z-index:999999;white-space:pre-wrap;word-break:break-all;border-top:3px solid #0f0;";
+    panel.textContent = "[debug] painel iniciado\n";
+    document.addEventListener("DOMContentLoaded", function () {
+      document.body.appendChild(panel);
+    });
+    function log(msg) {
+      panel.textContent += msg + "\n";
+      panel.scrollTop = panel.scrollHeight;
+    }
+    window.addEventListener("error", function (ev) {
+      log("[ERRO] " + ev.message + " em " + (ev.filename || "?") + ":" + ev.lineno);
+    });
+    window.addEventListener("unhandledrejection", function (ev) {
+      log("[PROMISE REJEITADA] " + (ev.reason && ev.reason.message ? ev.reason.message : ev.reason));
+    });
+    var origLog = console.log, origErr = console.error;
+    console.log = function () { log("[log] " + Array.from(arguments).join(" ")); origLog.apply(console, arguments); };
+    console.error = function () { log("[console.error] " + Array.from(arguments).join(" ")); origErr.apply(console, arguments); };
+    window.__debugLog = log;
+  })();
+</script>
 </head>
 <body>
 
@@ -207,7 +238,11 @@
 <!-- ===================== TOASTS ===================== -->
 <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="script.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"
+  onload="window.__debugLog('[ok] supabase-js carregou')"
+  onerror="window.__debugLog('[FALHA] supabase-js NAO carregou (CDN bloqueado?)')"></script>
+<script src="script.js"
+  onload="window.__debugLog('[ok] script.js carregou')"
+  onerror="window.__debugLog('[FALHA] script.js NAO carregou (404 ou path errado)')"></script>
 </body>
 </html>
