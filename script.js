@@ -34,7 +34,7 @@ if (!window.supabase || typeof window.supabase.createClient !== "function") {
   throw new Error("window.supabase indisponível — cdn.jsdelivr.net não carregou o supabase-js.");
 }
 
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ===================== PARÂMETROS DA ECONOMIA =====================
 // Espelham o que foi definido na simulação — ajuste aqui se mudar lá.
@@ -110,7 +110,7 @@ $("#form-login").addEventListener("submit", async (e) => {
   const botao = e.target.querySelector('button[type="submit"]');
 
   botao.disabled = true;
-  const { error } = await supabase.auth.signInWithOtp({
+  const { error } = await supabaseClient.auth.signInWithOtp({
     email,
     options: { emailRedirectTo: window.location.origin },
   });
@@ -130,7 +130,7 @@ $("#form-login").addEventListener("submit", async (e) => {
   $("#auth-modal").hidden = true;
 });
 
-supabase.auth.onAuthStateChange(async (_event, session) => {
+supabaseClient.auth.onAuthStateChange(async (_event, session) => {
   state.user = session?.user ?? null;
   if (state.user) {
     $("#btn-login").textContent = state.user.email;
@@ -163,7 +163,7 @@ async function carregarWallet() {
   if (error) return console.error(error);
   if (!data) {
     // primeira vez — cria carteira zerada
-    await supabase.from("wallets").insert({ owner_id: state.user.id, token: 0, moeda: 0 });
+    await supabaseClient.from("wallets").insert({ owner_id: state.user.id, token: 0, moeda: 0 });
     state.wallet = { token: 0, moeda: 0 };
   } else {
     state.wallet = data;
@@ -288,7 +288,7 @@ function renderTetoCaverna() {
 
 async function carregarItens() {
   if (!state.user) return;
-  const { data, error } = await supabase.from("items").select("*").eq("owner_id", state.user.id);
+  const { data, error } = await supabaseClient.from("items").select("*").eq("owner_id", state.user.id);
   if (error) return console.error(error);
   state.items = data ?? [];
   renderInventarioSelect();
@@ -334,7 +334,7 @@ $("#btn-explorar").addEventListener("click", async () => {
     .update({ vitorias: state.gladiator.vitorias, derrotas: state.gladiator.derrotas })
     .eq("id", state.gladiator.id);
 
-  await supabase.from("cave_runs").insert({
+  await supabaseClient.from("cave_runs").insert({
     owner_id: state.user.id,
     gladiator_id: state.gladiator.id,
     resultado,
@@ -375,7 +375,7 @@ function adicionarLogCaverna({ monstro, venceu, moedaGanha, itemGanho }) {
 
 // ===================== ARENA (PvP em bracket) =====================
 async function carregarFila() {
-  const { count, error } = await supabase.from("arena_queue").select("*", { count: "exact", head: true });
+  const { count, error } = await supabaseClient.from("arena_queue").select("*", { count: "exact", head: true });
   if (error) return console.error(error);
   $("#queue-count").textContent = count ?? 0;
 }
@@ -388,7 +388,7 @@ $("#btn-entrar-arena").addEventListener("click", async () => {
   }
 
   await ajustarWallet({ token: -ECONOMIA.taxaInscricaoArena });
-  await supabase.from("arena_queue").insert({ owner_id: state.user.id, gladiator_id: state.gladiator.id });
+  await supabaseClient.from("arena_queue").insert({ owner_id: state.user.id, gladiator_id: state.gladiator.id });
   toast("Inscrito na fila da arena.", "success");
   await tentarFecharBracket();
 });
@@ -414,7 +414,7 @@ async function tentarFecharBracket() {
 
   const participantes = fila.slice(0, tamanho);
   // remove os selecionados da fila
-  await supabase.from("arena_queue").delete().in("id", participantes.map((p) => p.id));
+  await supabaseClient.from("arena_queue").delete().in("id", participantes.map((p) => p.id));
 
   const resultado = rodarBracket(participantes.map((p) => ({
     owner_id: p.owner_id,
@@ -422,7 +422,7 @@ async function tentarFecharBracket() {
   })));
 
   await distribuirPremios(resultado, tamanho);
-  await supabase.from("arena_matches").insert({
+  await supabaseClient.from("arena_matches").insert({
     bracket_size: tamanho,
     participantes: participantes.map((p) => p.gladiator_id),
     resultado,
@@ -504,7 +504,7 @@ async function distribuirPremios(resultado, tamanho) {
       await ajustarWallet({ token: valor });
     } else {
       // outros jogadores: soma direto na wallet deles via update condicional
-      const { data } = await supabase.from("wallets").select("token").eq("owner_id", ownerId).maybeSingle();
+      const { data } = await supabaseClient.from("wallets").select("token").eq("owner_id", ownerId).maybeSingle();
       if (data) {
         await supabase
           .from("wallets")
@@ -577,7 +577,7 @@ $("#form-listar-item").addEventListener("submit", async (e) => {
   const preco = Number($("#input-preco-item").value);
   if (!itemId) return toast("Selecione um item.", "error");
 
-  const { error } = await supabase.from("marketplace_listings").insert({
+  const { error } = await supabaseClient.from("marketplace_listings").insert({
     item_id: itemId,
     vendedor_id: state.user.id,
     preco,
@@ -646,8 +646,8 @@ async function comprarItem(listingId) {
       .eq("owner_id", listing.vendedor_id);
   }
 
-  await supabase.from("items").update({ owner_id: state.user.id, gladiator_id: null, equipado: false }).eq("id", listing.items.id);
-  await supabase.from("marketplace_listings").update({ status: "vendido" }).eq("id", listingId);
+  await supabaseClient.from("items").update({ owner_id: state.user.id, gladiator_id: null, equipado: false }).eq("id", listing.items.id);
+  await supabaseClient.from("marketplace_listings").update({ status: "vendido" }).eq("id", listingId);
 
   toast(`Item comprado. Taxa retida: US$${fmt2(taxa)}.`, "success");
   await Promise.all([carregarItens(), carregarMercado()]);
