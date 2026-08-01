@@ -534,15 +534,41 @@ async function atualizarBotaoArena() {
     .select("id")
     .eq("owner_id", state.user.id)
     .maybeSingle();
-  const botao = $("#btn-entrar-arena");
+  const botaoEntrar = $("#btn-entrar-arena");
+  const botaoSair = $("#btn-sair-fila");
   if (data) {
-    botao.disabled = true;
-    botao.textContent = "Aguardando bracket fechar...";
+    botaoEntrar.disabled = true;
+    botaoEntrar.textContent = "Aguardando bracket fechar...";
+    botaoSair.hidden = false;
   } else {
-    botao.disabled = false;
-    botao.textContent = "Entrar na arena";
+    botaoEntrar.disabled = false;
+    botaoEntrar.textContent = "Entrar na arena";
+    botaoSair.hidden = true;
   }
 }
+
+$("#btn-sair-fila").addEventListener("click", async () => {
+  if (!(await exigirLogin())) return;
+
+  const botao = $("#btn-sair-fila");
+  botao.disabled = true;
+  const { error } = await supabaseClient.rpc("sair_fila_arena");
+  botao.disabled = false;
+
+  if (error) {
+    if (/nao_esta_na_fila/i.test(error.message)) {
+      // provavelmente o bracket fechou entre o clique e a resposta
+      toast("Você não está mais na fila — o bracket deve ter fechado.", "error");
+    } else {
+      return toast(`Erro ao sair da fila: ${error.message}. Rodou o schema_economia_atomica.sql atualizado?`, "error");
+    }
+  } else {
+    toast("Você saiu da fila e o token da inscrição foi devolvido.", "success");
+  }
+
+  await carregarWallet();
+  await carregarFila();
+});
 
 async function tentarFecharBracket() {
   // Tudo isso (sorteio, combate, prêmios) roda no servidor agora — o
