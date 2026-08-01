@@ -1,32 +1,8 @@
 /* =========================================================
    ARENA — lógica do jogo
-   =========================================================
-   ESQUEMA SUPABASE ESPERADO (ver schema.sql para o SQL completo):
-     profiles(id uuid pk, username text, created_at)
-     wallets(owner_id uuid pk, token numeric, moeda numeric)
-     gladiators(id uuid pk, owner_id uuid, nome, altura, peso,
-                forca, resistencia, agilidade, vitorias, derrotas)
-     items(id uuid pk, owner_id uuid, gladiator_id uuid nullable,
-           nome, tipo, valor_referencia, bonus_forca, bonus_resistencia,
-           bonus_agilidade, equipado boolean, created_at)
-     cave_runs(id uuid pk, owner_id uuid, gladiator_id uuid, resultado,
-               loot_moeda numeric, created_at)
-     arena_queue(id uuid pk, owner_id uuid, gladiator_id uuid, criado_em)
-     arena_matches(id uuid pk, bracket_size int, participantes jsonb,
-                   resultado jsonb, criado_em)
-     marketplace_listings(id uuid pk, item_id uuid, vendedor_id uuid,
-                          preco numeric, status text, criado_em)
-
-   ⚠️ AVISO DE SEGURANÇA IMPORTANTE
-   Este arquivo resolve combate, prêmios e taxas NO NAVEGADOR, para
-   servir de protótipo jogável. Como isso envolve token com valor real,
-   qualquer pessoa pode abrir o DevTools e chamar essas funções direto,
-   dando prêmio pra si mesma. Antes de operar com dinheiro de verdade,
-   mova as funções marcadas com 🔒 para Supabase Edge Functions (ou
-   outro backend) que você controle, e restrinja UPDATE em wallets/
-   items para acontecer só lá — nunca direto do cliente. Trate este
-   script como front-end de demonstração, não como o cofre do jogo.
    ========================================================= */
+alert("DIAGNÓSTICO 1: script.js começou a rodar.");
+
 
 // ===================== DIAGNÓSTICO: erro global visível =====================
 // Se qualquer erro no topo do script travar tudo (o que faz o formulário de
@@ -129,6 +105,7 @@ $("#btn-fechar-modal").addEventListener("click", () => ($("#auth-modal").hidden 
 
 $("#form-login").addEventListener("submit", async (e) => {
   e.preventDefault();
+  alert("DIAGNÓSTICO 2: o submit foi interceptado (preventDefault chamado).");
   const email = $("#input-login-email").value.trim();
   const botao = e.target.querySelector('button[type="submit"]');
 
