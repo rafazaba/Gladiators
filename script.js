@@ -189,7 +189,35 @@ async function exigirLogin() {
 
 // ===================== CARREGAR DADOS =====================
 async function carregarPerfilCompleto() {
-  await Promise.all([carregarWallet(), carregarGladiador(), carregarItens(), carregarFila(), carregarMercado()]);
+  await Promise.all([carregarWallet(), carregarGladiador(), carregarItens(), carregarFila(), carregarMercado(), carregarProgressoCaverna()]);
+}
+
+// Data local do dispositivo em YYYY-MM-DD (não usa UTC, pra bater com o "dia"
+// que o jogador realmente vive, considerando o fuso local do navegador).
+function hojeISO() {
+  return new Date().toLocaleDateString("en-CA");
+}
+
+async function carregarProgressoCaverna() {
+  const { data, error } = await supabaseClient
+    .from("cave_progresso")
+    .select("dia, descidas")
+    .eq("owner_id", state.user.id)
+    .maybeSingle();
+
+  if (error) {
+    console.error(error);
+    state.descidasFeitas = 0; // fallback seguro: não trava o jogo se a tabela ainda não existir
+    renderStatusCaverna();
+    return;
+  }
+
+  // Só pra exibir o preço estimado na tela — quem decide o preço de
+  // verdade (imune a data do celular trocada) é a função registrar_descida()
+  // no banco, chamada no clique de "Descer".
+  const hoje = hojeISO();
+  state.descidasFeitas = data && data.dia === hoje ? data.descidas : 0;
+  renderStatusCaverna();
 }
 
 async function carregarWallet() {
@@ -340,13 +368,24 @@ $("#btn-descer").addEventListener("click", async () => {
   if (!(await exigirLogin())) return;
   if (!state.gladiator) return toast("Forje um gladiador primeiro.", "error");
 
-  const preco = precoProximaDescida();
-  if (preco > 0) {
-    if (state.wallet.token < preco) return toast("Token insuficiente para descer.", "error");
-    await ajustarWallet({ token: -preco });
+  // Pré-checagem só pra UX (evitar uma chamada óbvia sem saldo). Quem decide
+  // de verdade — e já debita o token — é a função no banco, atomicamente.
+  const precoEstimado = precoProximaDescida();
+  if (state.wallet.token < precoEstimado) return toast("Token insuficiente para descer.", "error");
+
+  const botao = $("#btn-descer");
+  botao.disabled = true;
+  const { data: preco, error } = await supabaseClient.rpc("registrar_descida");
+  botao.disabled = false;
+
+  if (error) {
+    if (/saldo insuficiente/i.test(error.message)) return toast("Token insuficiente para descer.", "error");
+    return toast(`Erro ao descer: ${error.message}. Rodou o schema_cave_progresso.sql no Supabase?`, "error");
   }
-  state.descidasFeitas += 1;
+
+  await carregarWallet(); // o token já foi debitado no servidor — só busca o saldo real pra exibir
   state.emDescida = true;
+  await carregarProgressoCaverna(); // sincroniza o contador exibido com o que o servidor tem
   renderStatusCaverna();
   toast(preco === 0 ? "Descida grátis iniciada." : `Descida paga: -US$${fmt2(preco)}.`, "success");
 });
